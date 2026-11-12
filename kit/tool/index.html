@@ -1,0 +1,264 @@
+<title>xms1 燈光調整台</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 單一深色：像剪輯台，畫面在上、三組推桿在下；顏色取聖誕樹的暖燈＋交易所螢幕藍 */
+:root{
+  --bg:#14120f; --panel:#1d1a16; --line:#332d26; --fg:#efe6d8; --dim:#a39684;
+  --warm:#f2b35b; --screen:#5aa7d8;
+  --ui:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--ui);font-size:14px;line-height:1.5;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 32px}
+.wrap{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+h1{font-size:18px;font-weight:700;margin:0;letter-spacing:.02em}
+h1 small{font-family:var(--mono);font-weight:400;color:var(--dim);font-size:12px;margin-left:8px}
+.bar{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--warm)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--warm);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--warm);color:#1b140a;border-color:var(--warm)}
+.stage{position:relative;width:100%;aspect-ratio:16/9;max-width:100%;overflow:hidden;background:#000;border-radius:6px}
+.stage canvas{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:50% 50%;transition:transform .3s ease}
+.stage.zoom canvas{transform:scale(1.8) translateY(2%)}
+.err{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim);padding:24px;text-align:center}
+.groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+fieldset{margin:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+legend{padding:0 6px;font-weight:700;font-size:15px}
+legend span{font-weight:400;color:var(--dim);font-size:12px;margin-left:6px}
+.row{display:grid;grid-template-columns:7.5em 1fr 4.2em;align-items:center;gap:10px}
+.row label{color:var(--dim)}
+.row output{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+input[type=range]{width:100%;accent-color:var(--warm);min-width:0}
+.sw{display:flex;align-items:center;gap:10px}
+.sw input{width:18px;height:18px;accent-color:var(--warm)}
+.note{color:var(--dim);font-size:12px;margin:0}
+.out{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:var(--panel)}
+.out pre{margin:0;font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--fg);user-select:all}
+.out .bar{align-items:center}
+#copied{color:var(--warm);font-size:12px}
+.fx{grid-column:1/-1}
+.fxgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.fxi{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.fxi button{flex:1;text-align:left;border:0;background:none;padding:2px 4px}
+.fxi button.on{color:var(--warm);font-weight:700}
+.fxi label{display:flex;align-items:center;gap:4px;color:var(--dim);font-size:12px;white-space:nowrap}
+.fxi input{accent-color:var(--warm)}
+.fxrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 20px;align-items:center}
+#fxStatus{font-family:var(--mono);color:var(--screen);font-size:12px;margin:0}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>xms1 燈光調整台<small>S&amp;P 500 聖誕樹</small></h1>
+    <div class="bar">
+      <button id="play" aria-pressed="false">暫停</button>
+      <button id="zoom" aria-pressed="false">放大樹</button>
+      <button id="reset">回到定案數值</button>
+    </div>
+  </header>
+
+  <div class="stage" id="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
+
+  <div class="groups">
+    <fieldset>
+      <legend>燈光亮度<span>1 ＝ 原圖亮燈</span></legend>
+      <div class="row"><label for="gSpin">會轉的球</label><input id="gSpin" type="range" min="0" max="2" step="0.05"><output for="gSpin"></output></div>
+      <div class="row"><label for="gStatic">不轉的球</label><input id="gStatic" type="range" min="0" max="2" step="0.05"><output for="gStatic"></output></div>
+      <div class="row"><label for="gBg">其他玻璃球</label><input id="gBg" type="range" min="0" max="2" step="0.05"><output for="gBg"></output></div>
+      <div class="row"><label for="gLogo">Logo 亮度</label><input id="gLogo" type="range" min="0.3" max="1.5" step="0.05"><output for="gLogo"></output></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>閃爍<span>會轉的球以外全部都閃，單位秒</span></legend>
+      <div class="row"><label for="bGap">間隔</label><input id="bGap" type="range" min="0.01" max="1.5" step="0.01"><output for="bGap"></output></div>
+      <div class="row"><label for="bFade">變暗</label><input id="bFade" type="range" min="0.05" max="3" step="0.05"><output for="bFade"></output></div>
+      <div class="row"><label for="bHold">停</label><input id="bHold" type="range" min="0" max="3" step="0.05"><output for="bHold"></output></div>
+      <div class="row"><label for="bBack">亮回</label><input id="bBack" type="range" min="0.1" max="5" step="0.05"><output for="bBack"></output></div>
+      <div class="row"><label for="bDepth">變暗程度</label><input id="bDepth" type="range" min="0" max="1" step="0.05"><output for="bDepth"></output></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>旋轉<span>只有會轉的球，一圈幾秒</span></legend>
+      <div class="row"><label for="sMin">最快</label><input id="sMin" type="range" min="5" max="180" step="1"><output for="sMin"></output></div>
+      <div class="row"><label for="sMax">最慢</label><input id="sMax" type="range" min="5" max="180" step="1"><output for="sMax"></output></div>
+      <div class="sw"><input id="dbl" type="checkbox"><label for="dbl">Logo 雙面（背面也貼同一個 Logo）</label></div>
+      <p class="note">每顆球在最快和最慢之間隨機取一個速度，方向有左有右。</p>
+    </fieldset>
+
+    <fieldset class="fx">
+      <legend>燈光彩蛋<span>按名稱馬上播；勾「隨機」的會在長時間播放中穿插</span></legend>
+      <div class="fxgrid" id="fxgrid"></div>
+      <div class="fxrow">
+        <div class="sw"><input id="fxOn" type="checkbox"><label for="fxOn">隨機穿插</label></div>
+        <div class="row"><label for="fxEvery">多久一次（分）</label><input id="fxEvery" type="range" min="0.25" max="30" step="0.25"><output for="fxEvery"></output></div>
+        <div class="row"><label for="fxLen">效果時長</label><input id="fxLen" type="range" min="0.5" max="1" step="0.05"><output for="fxLen"></output></div>
+      </div>
+      <p id="fxStatus">　</p>
+      <p class="note">「多久一次」是平均值，實際會在 0.6–1.4 倍之間隨機；同一個效果不會連續出現。「效果時長」是倍數，1 ＝ 每個效果的原定長度。</p>
+    </fieldset>
+  </div>
+
+  <div class="out">
+    <div class="bar"><strong>目前數值</strong><button id="copy">複製數值</button><span id="copied" hidden>已複製</span></div>
+    <pre id="vals"></pre>
+    <p class="note">調到滿意後按「複製數值」，貼給 Claude 就可以。</p>
+  </div>
+</div>
+
+<script>
+const DEF={gSpin:1.7,gStatic:1.4,gBg:1.75,gLogo:0.45,bGap:0.01,bFade:1,bHold:0,bBack:0.5,bDepth:1,sMin:20,sMax:36,dbl:true,fxOn:true,fxEvery:10,fxLen:1};
+const P=Object.assign({},DEF);
+try{const s=JSON.parse(localStorage.getItem('xms1tool')||'null');if(s)Object.assign(P,s)}catch(e){}
+const ids=Object.keys(DEF);
+const FX=[['rise','由下往上亮',10],['fall','由上往下流',8],['spiral','螺旋',10],['breathe','呼吸',10],['ripple','漣漪',8],['sweep','左右掃過',7],['sparkle','滿天星',7],['front','Logo 一起轉正',7],['out','熄燈只剩 Logo',10]];
+const SEL=Object.fromEntries(FX.map(f=>[f[0],true]));
+try{const s=JSON.parse(localStorage.getItem('xms1fx')||'null');if(s)Object.assign(SEL,s)}catch(e){}
+function fmt(k,v){return (k==='dbl'||k==='fxOn')?(v?'開':'關'):(k[0]==='s'?Math.round(v)+'':(+v).toFixed(2))}
+function sync(){for(const k of ids){const el=document.getElementById(k);if(k==='dbl'||k==='fxOn')el.checked=P[k];else{el.value=P[k];const o=document.querySelector(`output[for=${k}]`);if(o)o.textContent=fmt(k,P[k])}}
+  document.getElementById('vals').textContent=
+`燈光亮度：會轉 ${fmt('gSpin',P.gSpin)}、不轉 ${fmt('gStatic',P.gStatic)}、其他玻璃球 ${fmt('gBg',P.gBg)}、Logo ${fmt('gLogo',P.gLogo)}
+閃爍（秒）：間隔 ${fmt('bGap',P.bGap)}、變暗 ${fmt('bFade',P.bFade)}、停 ${fmt('bHold',P.bHold)}、亮回 ${fmt('bBack',P.bBack)}、變暗程度 ${fmt('bDepth',P.bDepth)}
+旋轉：一圈 ${Math.round(P.sMin)}–${Math.round(P.sMax)} 秒、雙面 ${P.dbl?'開':'關'}
+燈光彩蛋：${FX.filter(f=>SEL[f[0]]).map(f=>f[1]).join('、')||'無'}；約每 ${(+P.fxEvery).toFixed(2)} 分一次、時長倍數 ${(+P.fxLen).toFixed(2)}`;
+  try{localStorage.setItem('xms1tool',JSON.stringify(P));localStorage.setItem('xms1fx',JSON.stringify(SEL))}catch(e){}}
+for(const k of ids){const el=document.getElementById(k);el.addEventListener('input',()=>{
+  P[k]=(k==='dbl'||k==='fxOn')?el.checked:+el.value;if(k==='fxOn'||k==='fxEvery')planNext(tNow);
+  if(k==='sMin'&&P.sMin>P.sMax)P.sMax=P.sMin; if(k==='sMax'&&P.sMax<P.sMin)P.sMin=P.sMax;
+  if(k==='sMin'||k==='sMax')respeed(); sync()})}
+document.getElementById('reset').onclick=()=>{Object.assign(P,DEF);respeed();sync()};
+document.getElementById('copy').onclick=async()=>{const t=document.getElementById('vals').textContent;const c=document.getElementById('copied');
+  try{await navigator.clipboard.writeText(t);c.hidden=false;setTimeout(()=>c.hidden=true,1500)}catch(e){const r=document.createRange();r.selectNodeContents(document.getElementById('vals'));const s=getSelection();s.removeAllRanges();s.addRange(r)}};
+const grid=document.getElementById('fxgrid');
+for(const [id,name] of FX){const d=document.createElement('div');d.className='fxi';
+  d.innerHTML=`<button type="button" id="fxb_${id}">▶ ${name}</button><label><input type="checkbox" id="fxc_${id}">隨機</label>`;grid.appendChild(d);
+  d.querySelector('button').onclick=()=>playFx(id);
+  const c=d.querySelector('input');c.checked=SEL[id];c.onchange=()=>{SEL[id]=c.checked;sync()}}
+let paused=false;document.getElementById('play').onclick=e=>{paused=!paused;e.target.textContent=paused?'播放':'暫停';e.target.setAttribute('aria-pressed',paused)};
+document.getElementById('zoom').onclick=e=>{const z=document.getElementById('stage').classList.toggle('zoom');e.target.setAttribute('aria-pressed',z)};
+
+/* ---------- WebGL ---------- */
+const cv=document.getElementById('cv');const gl=cv.getContext('webgl',{premultipliedAlpha:false,antialias:false});
+function fail(m){const d=document.createElement('div');d.className='err';d.textContent=m;document.getElementById('stage').appendChild(d)}
+const VS=`attribute vec2 c;uniform vec4 uB;uniform vec2 uR;uniform float uFull;varying vec2 vP;
+void main(){vec2 p=uFull>0.5?(c*0.5+0.5)*uR:uB.xy+c*uB.zw*1.05;vP=p;gl_Position=vec4(p.x/uR.x*2.-1.,1.-p.y/uR.y*2.,0,1);}`;
+const FS=`precision highp float;varying vec2 vP;uniform vec2 uR;uniform sampler2D tL,tU,tA,tM;uniform float uFull,uGain,uK,uYaw,uDbl,uLogo,uPlain,uFx,uFt,uFD,uFw,uId,uIsSpin,uFxOn;
+uniform vec4 uB;uniform vec2 uCell;uniform vec3 uBk;
+vec3 lin(vec3 c){return pow(c,vec3(2.2));}
+float hsh(float a,float b){return fract(sin(a*12.9898+b*78.233)*43758.5453);}
+vec2 fx(vec2 p){ /* x=變暗量 y=加亮量 */
+  float t=uFt,D=uFD,h=1.-p.y/1040.;float R=(650.+390.*clamp((p.y*2.-200.)/1700.,0.,1.2))/2.;
+  if(uFx<0.5)return vec2(0.);
+  if(uFx<1.5){if(t<1.5)return vec2(smoothstep(0.,1.,t/1.5),0.);float f=(t-1.5)/(D-3.)*1.15;return vec2(1.-clamp((f-h)/0.12,0.,1.),0.);}
+  if(uFx<2.5){float c=1.15-t/D*1.3;float b=exp(-pow((h-c)/0.07,2.));return vec2(0.45*(1.-b),b*0.9);}
+  if(uFx<3.5){float th=asin(clamp((p.x-945.)/R,-1.,1.));float b=smoothstep(0.7,1.,cos(h*18.85+th*2.-6.283*t/3.));return vec2(0.55*(1.-b),b*0.9);}
+  if(uFx<4.5){return vec2(0.85*(0.5-0.5*cos(6.283*3.*t/D)),0.);}
+  if(uFx<5.5){float d=length(p-vec2(945.,560.))/600.;float b=0.;for(int i=0;i<3;i++){float r=t/D*1.6-float(i)*0.35;b+=exp(-pow((d-r)/0.06,2.));}b=min(b,1.);return vec2(0.45*(1.-b),b*0.9);}
+  if(uFx<6.5){float xn=(p.x-430.)/1070.;float f=t/D*1.3-0.15;float b=exp(-pow((xn-f)/0.08,2.));return vec2(0.45*(1.-b),b*0.9);}
+  if(uFx<7.5){if(uFull>0.5)return vec2(0.);float r=hsh(uId,floor(t/0.12));return r>0.7?vec2(1.,0.):vec2(0.,r<0.15?0.8:0.);}
+  if(uFx<8.5)return vec2(0.);
+  float e=t<1.?t:t>D-3.?max(0.,(D-t)/3.):1.;e=smoothstep(0.,1.,e);
+  if(uFull>0.5||uPlain>0.5)return vec2(e,0.);return vec2(0.,0.3*e);
+}
+vec3 bgAt(vec2 p,float g,float k){vec2 uv=p/uR;vec4 M=texture2D(tM,uv);float tr=uFull>0.5?M.r:1.;
+  vec2 F=fx(uFull>0.5?p:uB.xy);float w=uFw*uFxOn;
+  k=mix(k,F.x,uFw*tr);g=mix(g,2.,w*tr);g*=1.+F.y*uFw*1.5*tr;g=mix(1.,g,tr);
+  float env=mix(1.,0.22,w*(1.-tr)*(1.-M.g));vec3 L=lin(texture2D(tL,uv).rgb),U=lin(texture2D(tU,uv).rgb);return (U+(L-U)*g*(1.-k))*env;}
+vec4 dec(vec3 P){float th=acos(clamp(P.z,-1.,1.));float rho=th/1.1;if(rho>=1.)return vec4(0.);
+  float l=length(P.xy);vec2 d=l>1e-5?P.xy/l:vec2(1.,0.);vec2 uv=(rho*d+1.)*0.5;
+  vec4 s=texture2D(tA,(uCell+uv)*vec2(0.1,0.125));return vec4(lin(s.rgb),s.a);}
+vec4 both(vec3 P){vec4 f=dec(P);if(uDbl>0.5){vec4 b=dec(vec3(-P.x,P.y,-P.z));f.rgb=f.rgb*f.a+b.rgb*b.a*(1.-f.a);f.a=f.a+b.a*(1.-f.a);if(f.a>0.)f.rgb/=f.a;}return f;}
+vec3 rot(vec3 n){float c=cos(uYaw),s=sin(uYaw);return vec3(n.x*c-n.z*s,n.y,n.x*s+n.z*c);}
+void main(){
+  if(uFull>0.5){gl_FragColor=vec4(pow(bgAt(vP,uGain,0.),vec3(1./2.2)),1.);return;}
+  vec2 q=(vP-uB.xy)/uB.zw;float r=length(q);
+  if(uPlain>0.5){float e=1.-smoothstep(0.35,1.,r);if(e<=0.)discard;gl_FragColor=vec4(pow(bgAt(vP,uGain,uK),vec3(1./2.2)),e);return;}
+  float edge=1.-smoothstep(0.985,1.03,r);if(edge<=0.)discard;
+  vec2 n2=q/0.96;float rho2=dot(n2,n2);float nz=sqrt(clamp(1.-rho2,0.,1.));
+  float R=0.5*(uB.z+uB.w)*0.96;float ins=clamp((1.-sqrt(rho2))*R/1.5,0.,1.);
+  vec3 bb=bgAt(vP,uGain,uK);
+  vec4 F=both(rot(vec3(n2,nz)));vec4 B=both(rot(vec3(n2,-nz)));
+  float fa=F.a*ins;float ba=B.a*ins*(1.-fa);
+  vec2 F2=fx(uB.xy);float gf=mix(0.82,1.,1.-uK)*mix(uLogo,mix(1.,0.15,F2.x)*(1.+F2.y*0.5),uFw*uFxOn);
+  vec3 Ld=normalize(vec3(-0.35,-0.5,0.79));float h=clamp(dot(vec3(n2,nz),Ld),0.,1.);
+  vec3 spec=vec3(0.22*pow(h,40.)+0.05*pow(h,6.));
+  vec3 front=F.rgb*(0.62+0.38*nz)*gf+spec;vec3 back=bb*0.45+uBk*0.35*gf;
+  vec3 o=bb*(1.-fa-ba)+front*fa+back*ba;
+  gl_FragColor=vec4(pow(max(o,0.),vec3(1./2.2)),edge);}`;
+let prog,U={},balls=[],T={};
+function sh(t,s){const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);if(!gl.getShaderParameter(x,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(x);return x}
+function tex(img,unit){const t=gl.createTexture();gl.activeTexture(gl.TEXTURE0+unit);gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+  for(const p of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T])gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);return t}
+const load=src=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>no(src);i.src=src});
+
+/* ---------- 動態 ---------- */
+let rnd=(()=>{let s=7;return()=>(s=(s*16807)%2147483647)/2147483647})();
+function respeed(){for(const b of balls)if(b.spin)b.per=P.sMin+(P.sMax-P.sMin)*b.u}
+let ev=[],busy=[],tNext=0;
+const ease=u=>{u=Math.min(Math.max(u,0),1);return u*u*(3-2*u)};
+function schedule(t){while(tNext<=t){const free=balls.filter(b=>!b.spin&&busy[b.i]<=tNext);
+  if(free.length){const b=free[Math.floor(rnd()*free.length)];const hold=P.bHold*(0.7+0.6*rnd());
+    b.ev.push({t0:tNext,hold,fade:P.bFade,back:P.bBack});busy[b.i]=tNext+P.bFade+hold+P.bBack}
+  tNext+=Math.max(P.bGap,0.01)}}
+function dim(b,t){let k=0;b.ev=b.ev.filter(e=>t-e.t0<=e.fade+e.hold+e.back);
+  for(const e of b.ev){const u=t-e.t0;if(u<0)continue;k=Math.max(k,u<e.fade?ease(u/e.fade):u<e.fade+e.hold?1:1-ease((u-e.fade-e.hold)/e.back))}
+  return k*P.bDepth}
+
+/* ---------- 燈光彩蛋 ---------- */
+let fxCur=null,fxNext=Infinity,fxLast='',tNow=0;
+function planNext(t){fxNext=P.fxOn?t+P.fxEvery*60*(0.6+0.8*Math.random()):Infinity}
+function playFx(id,t=tNow){const f=FX.find(x=>x[0]===id);fxCur={id,idx:FX.indexOf(f)+1,t0:t,D:f[2]*P.fxLen,name:f[1]};fxLast=id;
+  if(id==='front')for(const b of balls)if(b.spin){const step=P.dbl?Math.PI:2*Math.PI;const a0=b.yaw+b.ph;b.fa0=a0;b.faT=Math.round(a0/step)*step}
+  document.querySelectorAll('.fxi button').forEach(x=>x.classList.toggle('on',x.id==='fxb_'+id))}
+function fxTick(t){
+  if(fxCur&&t-fxCur.t0>=fxCur.D){if(fxCur.id==='front')for(const b of balls)if(b.spin)b.ph=b.faT-b.yaw;
+    fxCur=null;document.querySelectorAll('.fxi button').forEach(x=>x.classList.remove('on'));planNext(t)}
+  if(!fxCur&&t>=fxNext){const pool=FX.filter(f=>SEL[f[0]]&&f[0]!==fxLast);const all=FX.filter(f=>SEL[f[0]]);const use=pool.length?pool:all;
+    if(use.length)playFx(use[Math.floor(Math.random()*use.length)][0],t);else planNext(t)}
+  const st=document.getElementById('fxStatus');
+  st.textContent=fxCur?`正在播：${fxCur.name}（剩 ${Math.ceil(fxCur.D-(t-fxCur.t0))} 秒）`:(P.fxOn&&isFinite(fxNext)?`下一個彩蛋：約 ${Math.floor((fxNext-t)/60)} 分 ${Math.floor((fxNext-t)%60)} 秒後`:'隨機穿插已關閉，可以直接按上面的效果名稱播放')}
+function fxEnv(t){if(!fxCur)return 0;const u=t-fxCur.t0,D=fxCur.D;const e=Math.max(0,Math.min(1,u/1.5,(D-u)/1.5));return e*e*(3-2*e)}
+
+async function start(){
+  if(!gl){fail('這個瀏覽器不支援 WebGL，請換 Chrome 或 Safari 開。');return}
+  let L,Ui,A,Mk;
+  try{[L,Ui,A,Mk]=await Promise.all([load('lit.jpg'),load('unlit.jpg'),load('atlas.png'),load('mask.png')]);balls=await (await fetch('balls.json')).json();
+    const pl=await (await fetch('plain.json')).json();pl.forEach((p,j)=>balls.push({plain:true,spin:false,x:p[0],y:p[1],a:p[2],b:p[2],i:1000+j,yaw:0,bk:[0,0,0]}))}
+  catch(e){fail('素材載入失敗，請重新整理頁面。');return}
+  try{prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(prog)}
+  catch(e){fail('繪圖程式初始化失敗：'+e);return}
+  gl.useProgram(prog);
+  for(const n of ['uB','uR','uFull','tL','tU','tA','uGain','uK','uYaw','uDbl','uLogo','uCell','uBk','uPlain','uFx','uFt','uFD','uFw','uId','uIsSpin','uFxOn','tM'])U[n]=gl.getUniformLocation(prog,n);
+  tex(L,0);tex(Ui,1);tex(A,2);tex(Mk,3);gl.uniform1i(U.tL,0);gl.uniform1i(U.tU,1);gl.uniform1i(U.tA,2);gl.uniform1i(U.tM,3);
+  const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(prog,'c');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  gl.uniform2f(U.uR,1920,1080);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.viewport(0,0,1920,1080);
+  for(const b of balls){b.ev=[];busy[b.i]=-1;b.u=rnd();b.dir=rnd()<0.5?-1:1;b.ph=rnd()*6.283;b.r=(b.a+b.b)/2}
+  const lay=b=>b.plain?0:b.spin?2:1;
+  balls.sort((p,q)=>(lay(p)-lay(q))||(p.r-q.r));     // 閃爍點 → 不轉的球 → 轉的球（最後畫）
+  respeed();sync();planNext(0);
+  let t=0,last=performance.now();
+  function frame(now){const dt=Math.min((now-last)/1000,0.1);last=now;
+    if(!paused){t+=dt;tNow=t;schedule(t);const frz=fxCur&&fxCur.id==='front';for(const b of balls)if(b.spin&&!frz)b.ph+=b.dir*6.283*dt/b.per;fxTick(t)}
+    const fw=fxEnv(t);gl.uniform1f(U.uFx,fxCur&&fxCur.id!=='front'?fxCur.idx:0);gl.uniform1f(U.uFt,fxCur?t-fxCur.t0:0);gl.uniform1f(U.uFD,fxCur?fxCur.D:1);gl.uniform1f(U.uFw,fw);gl.uniform1f(U.uFxOn,fxCur?1:0);gl.uniform1f(U.uIsSpin,0);gl.uniform1f(U.uId,0);
+    gl.uniform1f(U.uFull,1);gl.uniform1f(U.uGain,P.gBg);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    gl.uniform1f(U.uFull,0);gl.uniform1f(U.uDbl,P.dbl?1:0);gl.uniform1f(U.uLogo,P.gLogo);
+    for(const b of balls){
+      gl.uniform1f(U.uPlain,b.plain?1:0);
+      gl.uniform4f(U.uB,b.x,b.y,b.a,b.b);gl.uniform2f(U.uCell,b.i%10,Math.floor(b.i/10));gl.uniform3f(U.uBk,b.bk[0],b.bk[1],b.bk[2]);
+      gl.uniform1f(U.uGain,b.plain?P.gBg:b.spin?P.gSpin:P.gStatic);gl.uniform1f(U.uK,b.spin?0:dim(b,t));let yaw=b.spin?b.yaw+b.ph:b.yaw;
+      if(b.spin&&fxCur&&fxCur.id==='front'){const u=t-fxCur.t0,D=fxCur.D;const e=u<1.5?u/1.5:u>D-1.5?Math.max(0,(D-u)/1.5):1;const s=e*e*(3-2*e);
+        const back=b.faT+b.dir*6.283*Math.max(0,u-(D-1.5))/b.per;yaw=u>D-1.5?back:b.fa0+(b.faT-b.fa0)*s}
+      gl.uniform1f(U.uYaw,yaw);gl.uniform1f(U.uId,b.i);gl.uniform1f(U.uIsSpin,b.spin?1:0);
+      gl.drawArrays(gl.TRIANGLE_STRIP,0,4)}
+    requestAnimationFrame(frame)}
+  requestAnimationFrame(frame);
+}
+sync();start();
+</script>
