@@ -66,6 +66,16 @@ def fs_from_tool():
     s = src[src.index('const FS=`') + 10:]; s = s[:s.index('`;')]
     s = s.replace('precision highp float;', '#version 330\nout vec4 fragColor;\n#define texture2D texture\n#define gl_FragColor fragColor\n')
     s = s.replace('varying vec2 vP;', 'in vec2 vP;')
+    # 片頭用（工具沒有）：uIt＝由下往上亮的前緣（h 座標，10＝全亮、不作用），uEnv＝環境變暗量（0＝不作用）。
+    # 兩個都在不作用的值時，算出來跟原本一模一樣（已算好的 80 段不受影響）
+    s = s.replace('uniform vec4 uB;', 'uniform float uIt,uEnv;uniform vec4 uB;')
+    s = s.replace('vec3 lin(vec3 c)', 'float itr(vec2 p){return 1.-clamp((uIt-(1.-p.y/1040.))/0.12,0.,1.);}\nvec3 lin(vec3 c)')
+    a = 'float env=mix(1.,0.22,w*(1.-tr)*(1.-M.g));'
+    assert a in s
+    s = s.replace(a, a + 'float Fi=itr(uFull>0.5?p:uB.xy);k=max(k,Fi*tr);env*=mix(1.,0.035,uEnv*mix(1.-M.g,Fi,tr));')
+    a = 'float gf=mix(0.82,1.,1.-uK)*mix(uLogo,mix(1.,0.15,F2.x)*(1.+F2.y*0.5),uFw*uFxOn);'
+    assert a in s
+    s = s.replace(a, a + 'gf*=mix(1.,0.12,itr(uB.xy));')
     return s
 
 # ---------------------------------------------------------------- 動態（與工具相同的規則，改成可重現、頭尾相接）
@@ -166,8 +176,11 @@ def front_target(b, F):
     mid = spin_yaw(b, F['t0'] + F['D'] / 2)
     return round(mid / step) * step
 
-def frame(prog, vao, fbo, balls, t, F):
+def frame(prog, vao, fbo, balls, t, F, intro=None):
+    """intro＝片頭用：dict(it=前緣, env=環境變暗量, kfun=閃爍函式(b, t))；None＝一般段落"""
     t = t % SEG                                              # 樹層只看段內秒數（每段一樣，只有彩蛋不同）
+    I = intro or {}; kf = I.get('kfun', dim)
+    setu(prog, uIt=float(I.get('it', 10.0)), uEnv=float(I.get('env', 0.0)))
     on = F is not None and F['t0'] <= t < F['t0'] + F['D']
     u = t - F['t0'] if on else 0.0
     fw = ease(max(0.0, min(1.0, u / 1.5, (F['D'] - u) / 1.5))) if on else 0.0
@@ -185,7 +198,7 @@ def frame(prog, vao, fbo, balls, t, F):
         setu(prog, uPlain=1.0 if b['plain'] else 0.0, uB=(b['x'], b['y'], b['a'], b['b']),
              uCell=(float(b['i'] % 10), float(b['i'] // 10)), uBk=tuple(b['bk']),
              uGain=P['gBg'] if b['plain'] else (P['gSpin'] if b['spin'] else P['gStatic']),
-             uK=0.0 if b['spin'] else dim(b, t), uYaw=yaw, uId=float(b['i']), uIsSpin=1.0 if b['spin'] else 0.0)
+             uK=0.0 if b['spin'] else kf(b, t), uYaw=yaw, uId=float(b['i']), uIsSpin=1.0 if b['spin'] else 0.0)
         vao.render(mode=5)
     a = np.frombuffer(fbo.read(components=4), np.uint8).reshape(H4, W4, 4)[::-1]
     # 工具的畫布是不預乘透明度、底下是黑色舞台：螢幕上看到的是 rgb×alpha。照工具的樣子輸出。
@@ -255,6 +268,33 @@ def abs_segments(work, logo_dirs, outdir, k0, k1, hours=4, seed=1):
         ff.stdin.close(); ff.wait(); ctx.release()
         print('done', out, p['fx'] or '-', flush=True)
 
+def board_patches(work, logo_dirs, outdir, only=None, hours=4, seed=1):
+    """遠方看板修正：只重算每個 600 秒交界前 screens.BOARD_FIX 秒（23 小段），接成品時換掉原本那幾秒。
+    檔名 patch_<段號>_<段內起始格>.mp4；段內位置都對齊 2 秒關鍵格"""
+    import screens as SC
+    os.makedirs(outdir, exist_ok=True)
+    plan = make_plan(math.ceil(hours * 3600 / SEG), seed)
+    scr = SC.Screens(dict(zip('abch', logo_dirs)), cv2.imread(f'{work}/lit.png'))
+    ctx, prog, vao, fbo, T = make_ctx(work)
+    for B in range(600, int(hours * 3600), 600):
+        if only is not None and B // 600 not in only: continue
+        a = B - SC.BOARD_FIX; k = int(a // SEG); p = plan[k]; f0 = int(round((a - p['start']) * FPS)); n = int(round(SC.BOARD_FIX * FPS))
+        assert f0 % GOP == 0 and f0 + n <= SEG * FPS
+        balls = build_state(); F = fx_window(p['fx'] or 'base')
+        if F and F['id'] == 'front':
+            for b in balls:
+                if b['spin']: b['_tgt'] = front_target(b, F)
+        last = {}; out = f'{outdir}/patch_{k:03d}_{f0:05d}.mp4'
+        ff = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-s', f'{W4}x{H4}',
+                               '-r', str(FPS), '-i', '-', '-c:v', 'libx264', '-preset', os.environ.get('X264', 'medium'),
+                               '-crf', os.environ.get('CRF', '18'), '-pix_fmt', 'yuv420p',
+                               '-x264-params', f'keyint={GOP}:min-keyint={GOP}:scenecut=0', out], stdin=subprocess.PIPE)
+        for f in range(f0, f0 + n):
+            ta = p['start'] + f / FPS
+            put_regions(T, scr.regions(ta), last)
+            ff.stdin.write(frame(prog, vao, fbo, balls, ta, F).tobytes())
+        ff.stdin.close(); ff.wait(); print('done', out, flush=True)
+
 def mid_window():
     """所有彩蛋都落在這一段（對齊 2 秒關鍵格）：基本片段切成 head / mid / tail，彩蛋片段只換 mid"""
     D = max(d for _, d in FX) * P['fxLen']; g = GOP / FPS
@@ -273,6 +313,8 @@ if __name__ == '__main__':
     a = sys.argv[1:]
     if a[0] == 'prep': prep(a[1], a[2])
     elif a[0] == 'pieces': pieces(a[1], a[2], a[3:])
+    elif a[0] == 'patch':    # patch <work> <a> <b> <c> <h> <outdir> [第幾個交界,…（1–23）]
+        board_patches(a[1], a[2:6], a[6], [int(x) for x in a[7].split(',')] if len(a) > 7 else None)
     elif a[0] == 'abs':      # abs <work> <a> <b> <c> <h> <outdir> <k0> <k1>
         abs_segments(a[1], a[2:6], a[6], int(a[7]), int(a[8]))
     else:

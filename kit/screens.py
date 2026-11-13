@@ -125,7 +125,21 @@ def board_cells(L):
     return col, lab, cells
 
 HUE = {'g': (75, 203), 'r': (175, 199), 'y': (16, 147)}       # OpenCV H、S：取原看板紅綠黃各自的中位數
+BOARD_FIX = 30.0      # 每 600 秒區塊交界前這幾秒（拉長到 30 秒，換色分散開來比較不明顯），各格在隨機時間換成下一區塊開頭的顏色（Henry 2026-11-13：要隨機才自然）
+
 def board_state(cells, t):
+    """每格的顏色＝board_raw，但在區塊交界（600 秒的倍數）前 BOARD_FIX 秒內，每格在自己的隨機時間
+    先換成交界那一刻的顏色，交界時就不會整片一起變。交界以外的時間跟原本完全一樣。"""
+    raw = board_raw(cells, t)
+    B = (int(t // 600) + 1) * 600
+    if B - t > BOARD_FIX or B <= 0: return raw
+    tgt = board_raw(cells, float(B))
+    for j in cells:
+        sw = B - 0.5 - np.random.default_rng(j * 104729 + B).uniform(0, BOARD_FIX - 1.0)
+        if t >= sw: raw[j] = tgt[j]
+    return raw
+
+def board_raw(cells, t):
     """每格各自的顏色：從固定亂數出發，每 5～10 秒換一次（紅綠各 45%、黃 10%），只看秒數"""
     out = {}
     for j in cells:
